@@ -1,0 +1,21 @@
+services:
+  gsm-minecraft:
+    build: .
+    image: gsm-minecraft
+    container_name: myMc
+    ports:
+      - "25565:25565"
+    environment:
+      - EULA=true
+      - MEMORY=4G
+    restart: unless-stopped
+    stdin_open: true
+    tty: true
+    volumes:
+    - mc-data2:/data
+    labels:
+      - "gst-managed=true"
+
+volumes:
+  mc-data2:
+    external: true

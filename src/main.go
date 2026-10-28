@@ -4,11 +4,16 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"strings"
 	"os"
+	"strings"
 
 	"github.com/moby/moby/client"
 )
+
+type ServerInfo struct {
+	Managed bool
+	Running bool
+}
 
 func main() {
 
@@ -21,14 +26,14 @@ func main() {
 		log.Fatal(err)
 	}
 	defer clir.Close() // runs when main function ends
-	
+
 	switch os.Args[1] {
 	case "list":
 		listServers(clir)
 	case "start", "stop":
 		if len(os.Args) < 3 {
 			fmt.Printf("Missing server name. Usage: gst %s <serverName>\n", os.Args[1])
-   			os.Exit(1)
+			os.Exit(1)
 		}
 		if os.Args[1] == "start" {
 			startServer(clir, os.Args[2])
@@ -42,11 +47,11 @@ func main() {
 	}
 }
 
-func listServers(clir *client.Client){
+func listServers(clir *client.Client) {
 	res, err := clir.ContainerList(context.Background(), client.ContainerListOptions{
-		All: true, 
-		Filters:client.Filters{}.Add("label", "gst-managed=true"),
-		}) // getting list of containers, filtered to only tool created
+		All:     true,
+		Filters: client.Filters{}.Add("label", "gst-managed=true"),
+	}) // getting list of containers, filtered to only tool created
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -55,14 +60,19 @@ func listServers(clir *client.Client){
 		fmt.Printf("Container Name:%s, State:%s\n", strings.TrimPrefix(ctr.Names[0], "/"), ctr.State)
 	}
 }
-func startServer(clir *client.Client, name string){
-	managed, err := isManagedByTool(clir, name)
+func startServer(clir *client.Client, name string) {
+	inf, err := getServerInfo(clir, name)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	if !managed {
+	if !inf.Managed {
 		fmt.Printf("Server %s is not managed by this tool, cannot start it\n", name)
+		return
+	}
+
+	if inf.Running {
+		fmt.Printf("Server %s is already running\n", name)
 		return
 	}
 
@@ -74,15 +84,15 @@ func startServer(clir *client.Client, name string){
 	fmt.Printf("Server %s started\n", name)
 }
 
-func stopServer(clir *client.Client, name string){
+func stopServer(clir *client.Client, name string) {
 	timeout := 60 // seconds
 
-	managed, err := isManagedByTool(clir, name)
+	inf, err := getServerInfo(clir, name)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	if !managed {
+	if !inf.Managed {
 		fmt.Printf("Server %s is not managed by this tool, cannot stop it\n", name)
 		return
 	}
@@ -97,13 +107,16 @@ func stopServer(clir *client.Client, name string){
 	fmt.Printf("Server %s stopped\n", name)
 }
 
-func isManagedByTool(clir *client.Client, name string) (bool,error) {
-	res, err := clir.ContainerInspect(context.Background(), name,client.ContainerInspectOptions{})
+func getServerInfo(clir *client.Client, name string) (ServerInfo, error) {
+	res, err := clir.ContainerInspect(context.Background(), name, client.ContainerInspectOptions{})
 	if err != nil {
-		return false,err //here dont want to terminate the program, returns false and the error
+		return ServerInfo{}, err //here dont want to terminate the program, returns false and the error
 	}
 
-	return res.Container.Config.Labels["gst-managed"] == "true",nil
+	return ServerInfo{
+		Managed: res.Container.Config.Labels["gst-managed"] == "true",
+		Running: res.Container.State.Running,
+	}, nil
 }
 
 const helpText = `Usage: gst <command> [arguments]

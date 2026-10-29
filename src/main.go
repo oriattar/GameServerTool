@@ -50,8 +50,8 @@ func main() {
 		memory := createCmd.String("memory", "4G", "server memory")
 		createCmd.Parse(os.Args[2:])
 
-		if createCmd.NArg() < 1 {
-			fmt.Println("Usage: gst create -port [N] -memory [[NumOfGigabytes]G] <serverName>")
+		if createCmd.NArg() != 1 { // only Name remain as a non flag
+			fmt.Println("Usage: gst create [-port N] [-memory SIZE] <serverName>")
 			os.Exit(1)
 		}
 		if !validMemory(*memory) {
@@ -60,6 +60,17 @@ func main() {
 		}
 		name := createCmd.Arg(0)
 		serverCreate(clir, name, *port, *memory)
+	case "delete":
+		deleteCmnd:= flag.NewFlagSet("delete", flag.ExitOnError)
+		delVolume := deleteCmnd.Bool("delvolume", false, "delete associated volume")
+		deleteCmnd.Parse(os.Args[2:])
+		
+		if deleteCmnd.NArg() != 1 { // only Name remain as a non flag
+			fmt.Println("Usage: gst delete [-delvolume] <serverName>")
+			os.Exit(1)
+		}
+		name := deleteCmnd.Arg(0)
+		serverDelete(clir, name, *delVolume)
 	case "help":
 		printHelp()
 	default:
@@ -189,6 +200,27 @@ func serverCreate(clir *client.Client, name string, port int, memory string) {
 	}
 	fmt.Printf("Server %s created with ID: %s\n", name, res.ID)
 }
+func serverDelete(clir *client.Client, name string,delVolume bool) {
+	inf, err := getServerInfo(clir, name)
+	if err != nil {
+		log.Fatal(err)
+	}
+	if !inf.Managed {
+		fmt.Printf("Server %s is not managed by this tool, cannot delete it\n", name)
+		return
+	}
+	if inf.Running {
+		stopServer(clir, name)
+	}
+	
+	clir.ContainerRemove(context.Background(), name, client.ContainerRemoveOptions{
+		RemoveVolumes: delVolume,
+	})
+	fmt.Printf("Server %s deleted\n", name)
+	if delVolume {
+		fmt.Printf("Associated volume deleted\n")
+	}
+}
 func imageExists(cli *client.Client, imageName string) (bool, error) {
 	_, err := cli.ImageInspect(context.Background(), imageName)
 	if err == nil {
@@ -209,7 +241,10 @@ Commands:
       -memory SIZE     Server memory, 1G to 32G (default 4G)
   start <serverName>   Start the game server container with the given name
   stop <serverName>    Stop the game server gracefully (waits up to 60 seconds)
-  list                 List all servers managed by this tool and their state
+  delete [options] <serverName>
+                       Delete the server container, stopping it first if running
+      -delvolume       Also delete the server's data volume (world data is lost)
+  list                List all servers managed by this tool and their state
   help                 Show this help message
 
 Examples:
@@ -217,7 +252,8 @@ Examples:
   gst create -port 25570 -memory 8G creative
   gst list
   gst start survival
-  gst stop survival`
+  gst stop survival
+  gst delete -delvolume survival`
 
 func printHelp() {
 	fmt.Println(helpText)

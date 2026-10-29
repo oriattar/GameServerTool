@@ -43,6 +43,9 @@ func constructMinecraftServerData(name string, port int, memory string) (ServerD
 				Type:   mount.TypeVolume,
 				Source: "gst-" + name + "-data", //each server will have its own volume for data persistence
 				Target: "/data",
+				VolumeOptions: &mount.VolumeOptions{
+					Labels: map[string]string{"gst-managed": "true"},
+				},
 			},
 		},
 	}, nil

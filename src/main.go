@@ -213,11 +213,21 @@ func serverDelete(clir *client.Client, name string,delVolume bool) {
 		stopServer(clir, name)
 	}
 	
-	clir.ContainerRemove(context.Background(), name, client.ContainerRemoveOptions{
-		RemoveVolumes: delVolume,
-	})
+	_,err = clir.ContainerRemove(context.Background(), name, client.ContainerRemoveOptions{})
+	if err != nil {
+		log.Fatal(err)
+	}
 	fmt.Printf("Server %s deleted\n", name)
 	if delVolume {
+		volumeName := "gst-" + name + "-data"
+		_,err = clir.VolumeRemove(context.Background(), volumeName, client.VolumeRemoveOptions{})
+		if cerrdefs.IsNotFound(err) {
+			fmt.Printf("No associated volume found, nothing to delete\n")
+			return
+		}
+		if err != nil {
+			log.Fatal(err)
+		}
 		fmt.Printf("Associated volume deleted\n")
 	}
 }

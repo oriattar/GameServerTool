@@ -2,32 +2,21 @@ package main
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"log"
 	"os"
+	"strconv"
 	"strings"
 
+	cerrdefs "github.com/containerd/errdefs"
 	"github.com/moby/moby/api/types/container"
-	"github.com/moby/moby/api/types/mount"
-	"github.com/moby/moby/api/types/network"
 	"github.com/moby/moby/client"
 )
 
 type ServerInfo struct {
 	Managed bool
 	Running bool
-}
-
-type ServerData struct {
-	Name         string
-	Image        string
-	ExposedPorts network.PortSet
-	PortBindings network.PortMap
-	Env          []string
-	Labels       map[string]string
-	Tty          bool
-	Stdin_open   bool
-	Mounts       []mount.Mount
 }
 
 func main() {
@@ -56,18 +45,37 @@ func main() {
 			stopServer(clir, os.Args[2])
 		}
 	case "create":
-		if len(os.Args) < 3 {
-			fmt.Printf("Missing server name. Usage: gst create <serverName>\n")
+		createCmd := flag.NewFlagSet("create", flag.ExitOnError)
+		port := createCmd.Int("port", 25565, "host port")
+		memory := createCmd.String("memory", "4G", "server memory")
+		createCmd.Parse(os.Args[2:])
+
+		if createCmd.NArg() < 1 {
+			fmt.Println("Usage: gst create -port [N] -memory [[NumOfGigabytes]G] <serverName>")
 			os.Exit(1)
 		}
-		serverCreate(clir, os.Args[2])
+		if !validMemory(*memory) {
+			fmt.Printf("Invalid memory value %q, expected 1G to 32G\n", *memory)
+			os.Exit(1)
+		}
+		name := createCmd.Arg(0)
+		serverCreate(clir, name, *port, *memory)
 	case "help":
 		printHelp()
 	default:
-		fmt.Println("Unknown command, refer to gst help for usage")
+		printHelp()
 	}
 }
 
+// validMemory checks the value is a positive number of gigabytes, e.g. "4G"
+func validMemory(memory string) bool {
+	num, found := strings.CutSuffix(memory, "G")
+	if !found {
+		return false
+	}
+	n, err := strconv.Atoi(num)
+	return err == nil && n > 0 && n <= 32
+}
 func listServers(clir *client.Client) {
 	res, err := clir.ContainerList(context.Background(), client.ContainerListOptions{
 		All:     true,
@@ -116,6 +124,10 @@ func stopServer(clir *client.Client, name string) {
 		fmt.Printf("Server %s is not managed by this tool, cannot stop it\n", name)
 		return
 	}
+	if !inf.Running {
+		fmt.Printf("Server %s is not running\n", name)
+		return
+	}
 
 	_, err = clir.ContainerStop(context.Background(), name, client.ContainerStopOptions{
 		Timeout: &timeout,
@@ -137,40 +149,22 @@ func getServerInfo(clir *client.Client, name string) (ServerInfo, error) {
 		Running: res.Container.State.Running,
 	}, nil
 }
-func constructMinecraftServerData(name string) (ServerData, error) {
-	tcpPort, err := network.ParsePort("25565/tcp")
-	if err != nil {
-		return ServerData{}, fmt.Errorf("parsing minecraft port: %w", err)
-	}
-
-	return ServerData{
-		Name:  name,
-		Image: "gst-minecraft",
-		ExposedPorts: network.PortSet{
-			tcpPort: struct{}{},
-		},
-		PortBindings: network.PortMap{
-			tcpPort: []network.PortBinding{{HostPort: "25565"}},
-		},
-		Env:        []string{"EULA=TRUE", "MEMORY=4G"},
-		Labels:     map[string]string{"gst-managed": "true"},
-		Tty:        true,
-		Stdin_open: true,
-		Mounts: []mount.Mount{
-			{
-				Type:   mount.TypeVolume,
-				Source: "gst-" + name + "-data", //each server will have its own volume for data persistence
-				Target: "/data",
-			},
-		},
-	}, nil
-}
-func serverCreate(clir *client.Client, name string) {
+func serverCreate(clir *client.Client, name string, port int, memory string) {
 	//Future switch case which game, for now only minecraft
-	serverData, err := constructMinecraftServerData(name)
+	serverData, err := constructMinecraftServerData(name, port, memory)
+
 	if err != nil {
 		log.Fatal(err)
 	}
+	exists, err := imageExists(clir, serverData.Image)
+	if err != nil {
+		log.Fatal(err)
+	}
+	if !exists {
+		fmt.Printf("image %s not found, build it first", serverData.Image)
+		return
+	}
+
 	containerConfig := &container.Config{
 		Image:        serverData.Image,
 		Env:          serverData.Env,
@@ -195,16 +189,32 @@ func serverCreate(clir *client.Client, name string) {
 	}
 	fmt.Printf("Server %s created with ID: %s\n", name, res.ID)
 }
+func imageExists(cli *client.Client, imageName string) (bool, error) {
+	_, err := cli.ImageInspect(context.Background(), imageName)
+	if err == nil {
+		return true, nil
+	}
+	if cerrdefs.IsNotFound(err) {
+		return false, nil
+	}
+	return false, err
+}
 
 const helpText = `Usage: gst <command> [arguments]
 
 Commands:
+  create [options] <serverName>
+                       Create a new Minecraft server container with the given name
+      -port N          Host port to expose (default 25565)
+      -memory SIZE     Server memory, 1G to 32G (default 4G)
   start <serverName>   Start the game server container with the given name
   stop <serverName>    Stop the game server gracefully (waits up to 60 seconds)
   list                 List all servers managed by this tool and their state
   help                 Show this help message
 
 Examples:
+  gst create survival
+  gst create -port 25570 -memory 8G creative
   gst list
   gst start survival
   gst stop survival`

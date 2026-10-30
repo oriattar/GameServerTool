@@ -15,7 +15,6 @@ type ServerInfo struct {
 	Managed bool
 	Running bool
 }
-
 func listServers(clir *client.Client) {
 	res, err := clir.ContainerList(context.Background(), client.ContainerListOptions{
 		All:     true,

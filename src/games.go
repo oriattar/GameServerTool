@@ -20,7 +20,7 @@ type ServerData struct {
 }
 
 func constructMinecraftServerData(name string, port int, memory string) (ServerData, error) {
-	tcpPort, err := network.ParsePort(fmt.Sprintf("%d/tcp", port))
+	tcpPort, err := network.ParsePort("25565/tcp")
 	if err != nil {
 		return ServerData{}, fmt.Errorf("parsing minecraft port: %w", err)
 	}
@@ -34,7 +34,7 @@ func constructMinecraftServerData(name string, port int, memory string) (ServerD
 		PortBindings: network.PortMap{
 			tcpPort: []network.PortBinding{{HostPort: fmt.Sprintf("%d", port)}},
 		},
-		Env:        []string{"EULA=TRUE", fmt.Sprintf("MEMORY=%s", memory)},
+		Env:        []string{"EULA=TRUE", "MEMORY=" + memory},
 		Labels:     map[string]string{"gst-managed": "true"},
 		Tty:        true,
 		Stdin_open: true,

@@ -10,9 +10,11 @@ import (
 
 	"github.com/moby/moby/client"
 )
+
 const SERVER_NAME = 0
 const TOOL_COMMAND = 1
 const COMMAND_MIN_ARGS = 2
+const CMD_MIN_ARGS = 2
 
 func main() {
 
@@ -39,6 +41,8 @@ func main() {
 		handleCreate(clir, args)
 	case "delete":
 		handleDelete(clir, args)
+	case "cmd":
+		handleCmd(clir, args)
 	case "help":
 		printHelp()
 	default:
@@ -67,10 +71,13 @@ func handleCreate(clir *client.Client, args []string) {
 	port := createCmd.Int("port", 25565, "host port")
 	memory := createCmd.String("memory", "4G", "server memory")
 	eula := createCmd.Bool("eula", false, "accept the Minecraft EULA (required)")
+	rcon := createCmd.Bool("rcon", false, "enable RCON (remote console) access")
+	rconPassword := createCmd.String("rconPass", "", "RCON password (required if RCON is enabled)")
+
 	createCmd.Parse(args)
 
 	if createCmd.NArg() != 1 { // only Name remain as a non flag
-		fmt.Println("Usage: gst create -eula [-port N] [-memory SIZE] <serverName>")
+		fmt.Println("Usage: gst create -eula [-port N] [-memory SIZE] [-rcon -rconPass PASS] <serverName>")
 		os.Exit(1)
 	}
 	if !*eula {
@@ -81,8 +88,12 @@ func handleCreate(clir *client.Client, args []string) {
 		fmt.Printf("Invalid memory value %q, expected 1G to 32G\n", *memory)
 		os.Exit(1)
 	}
+	if *rcon && *rconPassword == "" {
+		fmt.Println("RCON password is required with -rcon. Add -rconPass <password>")
+		os.Exit(1)
+	}
 	name := createCmd.Arg(SERVER_NAME)
-	serverCreate(clir, name, *port, *memory)
+	serverCreate(clir, name, *port, *memory, *rcon, *rconPassword)
 }
 
 func handleDelete(clir *client.Client, args []string) {
@@ -98,6 +109,34 @@ func handleDelete(clir *client.Client, args []string) {
 	serverDelete(clir, name, *delVolume)
 }
 
+func handleCmd(clir *client.Client, args []string) {
+	cmdCmnd := flag.NewFlagSet("cmd", flag.ExitOnError)
+	rconPass := cmdCmnd.String("rconPass", "", "RCON password of the server (required)")
+	cmdCmnd.Parse(args)
+
+	if cmdCmnd.NArg() < CMD_MIN_ARGS { // at least one command word and Name remain as non flags
+		fmt.Println("Usage: gst cmd -rconPass <password> <command> <serverName>")
+		os.Exit(1)
+	}
+	if *rconPass == "" {
+		fmt.Println("RCON password is required. Add -rconPass <password>")
+		os.Exit(1)
+	}
+
+	command, name := splitCmdArgs(cmdCmnd.Args())
+	response, err := rconCommand(clir, name, *rconPass, command)
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Println(response.Response)
+}
+
+// splitCmdArgs treats the last argument as the server name and joins the rest into the command
+func splitCmdArgs(args []string) (string, string) {
+	last := len(args) - 1
+	return strings.Join(args[:last], " "), args[last]
+}
+
 // validMemory checks the value is a positive number of gigabytes, e.g. "4G"
 func validMemory(memory string) bool {
 	num, found := strings.CutSuffix(memory, "G")
@@ -105,7 +144,7 @@ func validMemory(memory string) bool {
 		return false
 	}
 	n, err := strconv.Atoi(num)
-	
+
 	return err == nil && n > 0 && n <= 32
 }
 
@@ -115,23 +154,31 @@ Commands:
   create -eula [options] <serverName>
                        Create a new Minecraft server container with the given name
       -eula            Accept the Minecraft EULA (required)
-      -port N        Host port to expose (default 25565)
+      -port N          Host port to expose (default 25565)
       -memory SIZE     Server memory, 1G to 32G (default 4G)
+      -rcon            Enable RCON so the server accepts gst cmd
+      -rconPass PASS   RCON password (required with -rcon)
   start <serverName>   Start the game server container with the given name
   stop <serverName>    Stop the game server gracefully (waits up to 60 seconds)
   delete [options] <serverName>
                        Delete the server container, stopping it first if running
       -delvolume       Also delete the server's data volume (world data is lost)
-  list                 List all servers managed by this tool and their state
+  cmd -rconPass <password> <command> <serverName>
+                       Send a console command to a running server over RCON
+                       The last argument is the server name, the rest is the command
+      -rconPass PASS   RCON password the server was created with (required)
+  list               List all servers managed by this tool and their state
   help                 Show this help message
 
 Examples:
   gst create -eula survival
   gst create -eula -port 25570 -memory 8G creative
+  gst create -eula -rcon -rconPass secret survival
   gst list
   gst start survival
   gst stop survival
-  gst delete -delvolume survival`
+  gst delete -delvolume survival
+  gst cmd -rconPass secret say hello survival`
 
 func printHelp() {
 	fmt.Println(helpText)

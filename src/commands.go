@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"net"
 	"strings"
 
 	cerrdefs "github.com/containerd/errdefs"
@@ -14,7 +15,13 @@ import (
 type ServerInfo struct {
 	Managed bool
 	Running bool
+	IPAddr  string
 }
+
+const LOGIN = 3
+const DEFAULT_TIMEOUT = 60
+const COMMAND = 2
+
 func listServers(clir *client.Client) {
 	res, err := clir.ContainerList(context.Background(), client.ContainerListOptions{
 		All:     true,
@@ -52,7 +59,7 @@ func startServer(clir *client.Client, name string) {
 	fmt.Printf("Server %s started\n", name)
 }
 func stopServer(clir *client.Client, name string) {
-	timeout := 60 // seconds
+	timeout := DEFAULT_TIMEOUT // seconds
 
 	inf, err := getServerInfo(clir, name)
 	if err != nil {
@@ -83,12 +90,23 @@ func getServerInfo(clir *client.Client, name string) (ServerInfo, error) {
 		return ServerInfo{}, err //here dont want to terminate the program, returns false and the error
 	}
 
+	ipAddr := ""
+	settings := res.Container.NetworkSettings
+
+	if settings != nil {
+		endpoint, ok := settings.Networks["bridge"]
+		if ok && endpoint != nil {
+			ipAddr = endpoint.IPAddress.String()
+		}
+	}
+
 	return ServerInfo{
 		Managed: res.Container.Config.Labels["gst-managed"] == "true",
 		Running: res.Container.State.Running,
+		IPAddr:  ipAddr,
 	}, nil
 }
-func serverCreate(clir *client.Client, name string, port int, memory string) {
+func serverCreate(clir *client.Client, name string, port int, memory string, rcon bool, rconPassword string) {
 	//Future switch case which game, for now only minecraft
 	serverData, err := constructMinecraftServerData(name, port, memory)
 
@@ -102,6 +120,10 @@ func serverCreate(clir *client.Client, name string, port int, memory string) {
 	if !exists {
 		fmt.Printf("image %s not found, build it first", serverData.Image)
 		return
+	}
+
+	if rcon {
+		serverData.Env = append(serverData.Env, "RCON=true", "RCON_PASSWORD="+rconPassword)
 	}
 
 	containerConfig := &container.Config{
@@ -128,7 +150,7 @@ func serverCreate(clir *client.Client, name string, port int, memory string) {
 	}
 	fmt.Printf("Server %s created with ID: %s\n", name, res.ID)
 }
-func serverDelete(clir *client.Client, name string,delVolume bool) {
+func serverDelete(clir *client.Client, name string, delVolume bool) {
 	inf, err := getServerInfo(clir, name)
 	if err != nil {
 		log.Fatal(err)
@@ -141,14 +163,14 @@ func serverDelete(clir *client.Client, name string,delVolume bool) {
 		stopServer(clir, name)
 	}
 
-	_,err = clir.ContainerRemove(context.Background(), name, client.ContainerRemoveOptions{})
+	_, err = clir.ContainerRemove(context.Background(), name, client.ContainerRemoveOptions{})
 	if err != nil {
 		log.Fatal(err)
 	}
 	fmt.Printf("Server %s deleted\n", name)
 	if delVolume {
 		volumeName := "gst-" + name + "-data"
-		_,err = clir.VolumeRemove(context.Background(), volumeName, client.VolumeRemoveOptions{})
+		_, err = clir.VolumeRemove(context.Background(), volumeName, client.VolumeRemoveOptions{})
 		if cerrdefs.IsNotFound(err) {
 			fmt.Printf("No associated volume found, nothing to delete\n")
 			return
@@ -168,4 +190,35 @@ func imageExists(cli *client.Client, imageName string) (bool, error) {
 		return false, nil
 	}
 	return false, err
+}
+func rconCommand(clir *client.Client, name string, rconPassword string, command string) (ServerResponse, error) {
+	res, err := getServerInfo(clir, name)
+	if err != nil {
+		return ServerResponse{}, fmt.Errorf("getting server info failed: %w", err)
+	}
+	// sanity checks to ensure the container is on the bridge network and has network settings
+
+	tcpAddr, err := net.ResolveTCPAddr("tcp", res.IPAddr+":25575")
+	if err != nil {
+		return ServerResponse{}, fmt.Errorf("ResolveTCPAddr failed:%v", err)
+	}
+	conn, err := net.DialTCP("tcp", nil, tcpAddr)
+	if err != nil {
+		return ServerResponse{}, fmt.Errorf("Dial failed:%v", err)
+	} //finish setting up connetion
+
+	defer conn.Close()
+
+	_, err = rconLogin(conn, rconPassword)
+	if err != nil {
+		return ServerResponse{}, err
+	}
+
+	response, err := interact(conn, int32(COMMAND), command)
+	if err != nil {
+		return ServerResponse{}, err
+	}
+
+	return response, nil
+
 }

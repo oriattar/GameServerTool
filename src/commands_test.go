@@ -49,6 +49,11 @@ func TestCommandArgumentValidation(t *testing.T) {
 		{"delete without name", []string{"delete"}, 1, "Usage: gst delete"},
 		{"delete bool with separate value", []string{"delete", "-delvolume", "false", "survival"}, 1, "Usage: gst delete"},
 		{"delete flag after name", []string{"delete", "survival", "-delvolume"}, 1, "Usage: gst delete"},
+
+		{"cmd without arguments", []string{"cmd"}, 1, "Usage: gst cmd"},
+		{"cmd without server name", []string{"cmd", "-rconPass", "secret", "list"}, 1, "Usage: gst cmd"},
+		{"cmd flag after arguments", []string{"cmd", "list", "survival", "-rconPass", "secret"}, 1, "RCON password is required"},
+		{"cmd without password", []string{"cmd", "list", "survival"}, 1, "RCON password is required"},
 	}
 
 	for _, tt := range tests {

@@ -1,7 +1,7 @@
 services:
   gsm-minecraft:
     build: .
-    image: gsm-minecraft
+    image: gst-minecraft
     container_name: myMc
     ports:
       - "25565:25565"

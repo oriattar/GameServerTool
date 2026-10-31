@@ -25,12 +25,11 @@ func writeToServer(conn net.Conn, Type int32, command string) error {
 
 	_, err := conn.Write((constructByteBuffer(FIXED_ID, Type, command)))
 	if err != nil {
-		return fmt.Errorf("write to server failed: %w", err)
+		return fmt.Errorf("-writeToServer: %w", err)
 	}
 
 	return nil
 }
-
 func constructByteBuffer(ID int32, commandType int32, command string) []byte {
 
 	var buf bytes.Buffer                                                               // have an address, thus can call a pointer methods
@@ -44,42 +43,40 @@ func constructByteBuffer(ID int32, commandType int32, command string) []byte {
 
 	return buf.Bytes()
 }
-
 func readFromServer(conn *net.TCPConn) (ServerResponse, error) {
 	reply := make([]byte, DEFAULT_BUFFER_SIZE)
 
 	_, err := conn.Read(reply)
 	if err != nil {
-		return ServerResponse{}, fmt.Errorf("Read response from server failed:%v", err)
+		return ServerResponse{}, fmt.Errorf("-readFromServer: %w", err)
 	}
 	res, err := constructResponse(reply)
 	if err != nil {
-		return ServerResponse{}, fmt.Errorf("Response construction failed:%v", err)
+		return ServerResponse{}, fmt.Errorf("-readFromServer: %w", err)
 	}
 
 	return res, nil
 }
-
 func constructResponse(buf []byte) (ServerResponse, error) {
 	reader := bytes.NewReader(buf)
 
 	size, err := readInt32(reader)
 	if err != nil {
-		return ServerResponse{}, err
+		return ServerResponse{}, fmt.Errorf("-constructResponse: %w", err)
 	}
 	id, err := readInt32(reader)
 	if err != nil {
-		return ServerResponse{}, err
+		return ServerResponse{}, fmt.Errorf("-constructResponse: %w", err)
 	}
 	responseType, err := readInt32(reader)
 	if err != nil {
-		return ServerResponse{}, err
+		return ServerResponse{}, fmt.Errorf("-constructResponse: %w", err)
 	}
 
 	responseLen := size - INT32_SIZE - INT32_SIZE - EMPTY_STRING_SIZE
 	response, err := readString(reader, responseLen)
 	if err != nil {
-		return ServerResponse{}, err
+		return ServerResponse{}, fmt.Errorf("-constructResponse: %w", err)
 	}
 
 	return ServerResponse{
@@ -89,21 +86,19 @@ func constructResponse(buf []byte) (ServerResponse, error) {
 		Response:     response,
 	}, nil
 }
-
 func readInt32(buf io.Reader) (int32, error) {
 	var val int32
 	err := binary.Read(buf, binary.LittleEndian, &val)
 	if err != nil {
-		return 0, fmt.Errorf("reading int32 failed:%v", err)
+		return 0, fmt.Errorf("-readInt32: %w", err)
 	}
 
 	return val, err
 }
-
 func readString(r io.Reader, length int32) (string, error) {
 	data := make([]byte, length)
 	if _, err := io.ReadFull(r, data); err != nil {
-		return "", fmt.Errorf("reading string failed: %v", err)
+		return "", fmt.Errorf("-readString: %w", err)
 	}
 
 	return string(data), nil
@@ -112,10 +107,10 @@ func rconLogin(conn *net.TCPConn, rconPassword string) (ServerResponse, error) {
 	commandType := int32(LOGIN)
 	res, err := interact(conn, commandType, rconPassword)
 	if err != nil {
-		return ServerResponse{}, err
+		return ServerResponse{}, fmt.Errorf("-rconLogin: %w", err)
 	}
 	if res.ID == AUTH_FAILED {
-		return res, fmt.Errorf("Failed to log in to RCON")
+		return res, fmt.Errorf("-rconLogin: failed to log in to RCON")
 	}
 
 	return res, err
@@ -123,12 +118,12 @@ func rconLogin(conn *net.TCPConn, rconPassword string) (ServerResponse, error) {
 func interact(conn *net.TCPConn, commandType int32, command string) (ServerResponse, error) {
 	err := writeToServer(conn, commandType, command)
 	if err != nil {
-		return ServerResponse{}, fmt.Errorf("Error send command to server:%v", err)
+		return ServerResponse{}, fmt.Errorf("-interact: %w", err)
 	}
 
 	response, err := readFromServer(conn)
 	if err != nil {
-		return ServerResponse{}, fmt.Errorf("Error getting response from server:%v", err)
+		return ServerResponse{}, fmt.Errorf("-interact: %w", err)
 	}
 
 	return response, nil

@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"io"
 	"os/exec"
 	"strings"
 	"testing"
@@ -20,6 +21,47 @@ func runGst(t *testing.T, args ...string) (string, int) {
 		t.Fatalf("running gst %v: %v", args, err)
 	}
 	return string(out), 0
+}
+
+// Docker is pointed at a closed port, so each command fails and logs the chain of function names
+func TestErrorsNameTheFailingFunctions(t *testing.T) {
+	t.Setenv("DOCKER_HOST", "tcp://127.0.0.1:1")
+
+	tests := []struct {
+		args       []string
+		wantOutput string
+	}{
+		{[]string{"list"}, "-listServers: "},
+		{[]string{"start", "survival"}, "-startServer: -getServerInfo: "},
+		{[]string{"stop", "survival"}, "-stopServer: -getServerInfo: "},
+		{[]string{"delete", "survival"}, "-serverDelete: -getServerInfo: "},
+		{[]string{"create", "-eula", "survival"}, "-serverCreate: -imageExists: "},
+		{[]string{"cmd", "-rconPass", "secret", "list", "survival"}, "-rconCommand: -getServerInfo: "},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.args[0], func(t *testing.T) {
+			out, code := runGst(t, tt.args...)
+			if code != 1 {
+				t.Errorf("exit code = %d, want 1\noutput:\n%s", code, out)
+			}
+			if !strings.Contains(out, tt.wantOutput) {
+				t.Errorf("output does not contain %q\noutput:\n%s", tt.wantOutput, out)
+			}
+		})
+	}
+}
+
+func TestErrorChainKeepsOriginalError(t *testing.T) {
+	_, err := constructResponse(nil)
+
+	want := "-constructResponse: -readInt32: EOF"
+	if err == nil || err.Error() != want {
+		t.Errorf("error = %v, want %q", err, want)
+	}
+	if !errors.Is(err, io.EOF) {
+		t.Errorf("errors.Is(%v, io.EOF) = false, the original error was lost", err)
+	}
 }
 
 // These cases all fail argument validation before any Docker call, so they run without a Docker daemon

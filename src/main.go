@@ -32,7 +32,7 @@ func main() {
 
 	switch os.Args[TOOL_COMMAND] {
 	case "list":
-		listServers(clir)
+		handleList(clir)
 	case "start":
 		handleStart(clir, args)
 	case "stop":
@@ -50,12 +50,22 @@ func main() {
 	}
 }
 
+func handleList(clir *client.Client) {
+	err := listServers(clir)
+	if err != nil {
+		log.Fatal(err)
+	}
+}
+
 func handleStart(clir *client.Client, args []string) {
 	if len(args) != 1 {
 		fmt.Println("Usage: gst start <serverName>")
 		os.Exit(1)
 	}
-	startServer(clir, args[SERVER_NAME])
+	err := startServer(clir, args[SERVER_NAME])
+	if err != nil {
+		log.Fatal(err)
+	}
 }
 
 func handleStop(clir *client.Client, args []string) {
@@ -63,7 +73,10 @@ func handleStop(clir *client.Client, args []string) {
 		fmt.Println("Usage: gst stop <serverName>")
 		os.Exit(1)
 	}
-	stopServer(clir, args[SERVER_NAME])
+	err := stopServer(clir, args[SERVER_NAME])
+	if err != nil {
+		log.Fatal(err)
+	}
 }
 
 func handleCreate(clir *client.Client, args []string) {
@@ -93,7 +106,10 @@ func handleCreate(clir *client.Client, args []string) {
 		os.Exit(1)
 	}
 	name := createCmd.Arg(SERVER_NAME)
-	serverCreate(clir, name, *port, *memory, *rcon, *rconPassword)
+	err := serverCreate(clir, name, *port, *memory, *rcon, *rconPassword)
+	if err != nil {
+		log.Fatal(err)
+	}
 }
 
 func handleDelete(clir *client.Client, args []string) {
@@ -106,7 +122,10 @@ func handleDelete(clir *client.Client, args []string) {
 		os.Exit(1)
 	}
 	name := deleteCmnd.Arg(SERVER_NAME)
-	serverDelete(clir, name, *delVolume)
+	err := serverDelete(clir, name, *delVolume)
+	if err != nil {
+		log.Fatal(err)
+	}
 }
 
 func handleCmd(clir *client.Client, args []string) {

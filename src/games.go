@@ -22,7 +22,7 @@ type ServerData struct {
 func constructMinecraftServerData(name string, port int, memory string) (ServerData, error) {
 	tcpPort, err := network.ParsePort("25565/tcp")
 	if err != nil {
-		return ServerData{}, fmt.Errorf("parsing minecraft port: %w", err)
+		return ServerData{}, fmt.Errorf("-constructMinecraftServerData: %w", err)
 	}
 
 	return ServerData{

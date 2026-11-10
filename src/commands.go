@@ -186,7 +186,7 @@ func serverCreate(clir *client.Client, name string, port int, memory string, rco
 		if e != nil {
 			fmt.Printf("Failed to clean up server %s: %v\n", name, e)
 		}
-		return fmt.Errorf("server %s was created but failed to start (is port %d in use?)", name, port)
+		return fmt.Errorf("server %s was created but failed to start (is port %d in use?): %w", name, port, err)
 	}
 
 	return nil

@@ -59,25 +59,25 @@ func TestValidMemory(t *testing.T) {
 func TestSplitCmdArgs(t *testing.T) {
 	tests := []struct {
 		args        []string
-		wantCommand string
 		wantName    string
+		wantCommand string
 	}{
-		{[]string{"list", "survival"}, "list", "survival"},
-		{[]string{"say", "hello", "world", "survival"}, "say hello world", "survival"},
-		{[]string{"say hello", "survival"}, "say hello", "survival"},
-		{[]string{"gamemode", "creative", "-x", "survival"}, "gamemode creative -x", "survival"},
+		{[]string{"survival", "list"}, "survival", "list"},
+		{[]string{"survival", "say", "hello", "world"}, "survival", "say hello world"},
+		{[]string{"survival", "say hello"}, "survival", "say hello"},
+		{[]string{"survival", "gamemode", "creative", "-x"}, "survival", "gamemode creative -x"},
 	}
 
 	for _, tt := range tests {
-		command, name := splitCmdArgs(tt.args)
-		if command != tt.wantCommand || name != tt.wantName {
-			t.Errorf("splitCmdArgs(%q) = (%q, %q), want (%q, %q)", tt.args, command, name, tt.wantCommand, tt.wantName)
+		name, command := splitCmdArgs(tt.args)
+		if name != tt.wantName || command != tt.wantCommand {
+			t.Errorf("splitCmdArgs(%q) = (%q, %q), want (%q, %q)", tt.args, name, command, tt.wantName, tt.wantCommand)
 		}
 	}
 }
 
 func TestHelpTextListsAllCommands(t *testing.T) {
-	for _, cmd := range []string{"create", "start", "stop", "delete", "list", "cmd", "help", "-eula", "-port", "-memory", "-delvolume", "-rcon", "-rconPass"} {
+	for _, cmd := range []string{"create", "start", "stop", "delete", "list", "cmd", "help", "-eula", "-port", "-memory", "-delvolume", "-rcon"} {
 		if !strings.Contains(helpText, cmd) {
 			t.Errorf("helpText does not mention %q", cmd)
 		}

@@ -2,9 +2,11 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
 	"fmt"
 	"net"
 	"strings"
+	"time"
 
 	cerrdefs "github.com/containerd/errdefs"
 	"github.com/moby/moby/api/types/container"
@@ -12,9 +14,11 @@ import (
 )
 
 type ServerInfo struct {
-	Managed bool
-	Running bool
-	IPAddr  string
+	Managed  bool
+	Running  bool
+	IPAddr   string
+	RCON     bool
+	RCONPass string
 }
 
 const LOGIN = 3
@@ -100,13 +104,28 @@ func getServerInfo(clir *client.Client, name string) (ServerInfo, error) {
 		}
 	}
 
+	rcon := false
+	rconPass := ""
+	if res.Container.Config != nil { //looking for the rcon configuration in the container's environment variables
+		for _, env := range res.Container.Config.Env {
+			if strings.HasPrefix(env, "RCON_PASSWORD=") {
+				rconPass = strings.TrimPrefix(env, "RCON_PASSWORD=")
+			}
+			if env == "RCON=true" {
+				rcon = true
+			}
+		}
+	}
+
 	return ServerInfo{
-		Managed: res.Container.Config.Labels["gst-managed"] == "true",
-		Running: res.Container.State.Running,
-		IPAddr:  ipAddr,
+		Managed:  res.Container.Config.Labels["gst-managed"] == "true",
+		Running:  res.Container.State.Running,
+		IPAddr:   ipAddr,
+		RCON:     rcon,
+		RCONPass: rconPass,
 	}, nil
 }
-func serverCreate(clir *client.Client, name string, port int, memory string, rcon bool, rconPassword string) error {
+func serverCreate(clir *client.Client, name string, port int, memory string, rcon bool) error {
 	//Future switch case which game, for now only minecraft
 	serverData, err := constructMinecraftServerData(name, port, memory)
 
@@ -123,7 +142,8 @@ func serverCreate(clir *client.Client, name string, port int, memory string, rco
 	}
 
 	if rcon {
-		serverData.Env = append(serverData.Env, "RCON=true", "RCON_PASSWORD="+rconPassword)
+		rconPass := rand.Text()
+		serverData.Env = append(serverData.Env, "RCON=true", "RCON_PASSWORD="+rconPass)
 	}
 
 	containerConfig := &container.Config{
@@ -198,30 +218,41 @@ func imageExists(cli *client.Client, imageName string) (bool, error) {
 	}
 	return false, fmt.Errorf("-imageExists: %w", err)
 }
-func rconCommand(clir *client.Client, name string, rconPassword string, command string) (ServerResponse, error) {
+func rconCommand(clir *client.Client, name string, command string) (ServerResponse, error) {
 	res, err := getServerInfo(clir, name)
 	if err != nil {
 		return ServerResponse{}, fmt.Errorf("-rconCommand: %w", err)
 	}
 	// sanity checks to ensure the container is on the bridge network and has network settings
-
-	tcpAddr, err := net.ResolveTCPAddr("tcp", res.IPAddr+":25575")
-	if err != nil {
-		return ServerResponse{}, fmt.Errorf("-rconCommand: %w", err)
+	if !res.Managed {
+		return ServerResponse{}, fmt.Errorf("-rconCommand: Server %s is not managed by this tool.\n", name)
 	}
-	conn, err := net.DialTCP("tcp", nil, tcpAddr)
+
+	if !res.Running {
+		return ServerResponse{}, fmt.Errorf("-rconCommand: Server %s is not running.\n", name)
+	}
+
+	if !res.RCON {
+		return ServerResponse{}, fmt.Errorf("-rconCommand: RCON is not enabled for server %s.\n", name)
+	}
+	rconPassword := res.RCONPass
+
+	conn, err := net.DialTimeout("tcp", res.IPAddr+":25575", 5*time.Second)
 	if err != nil {
 		return ServerResponse{}, fmt.Errorf("-rconCommand: %w", err)
 	} //finish setting up connetion
 
 	defer conn.Close()
 
-	_, err = rconLogin(conn, rconPassword)
+	if err != nil {
+		return ServerResponse{}, fmt.Errorf("-rconCommand: %w", err)
+	}
+	_, err = rconLogin(&conn, rconPassword)
 	if err != nil {
 		return ServerResponse{}, fmt.Errorf("-rconCommand: %w", err)
 	}
 
-	response, err := interact(conn, int32(COMMAND), command)
+	response, err := interact(&conn, int32(COMMAND), command)
 	if err != nil {
 		return ServerResponse{}, fmt.Errorf("-rconCommand: %w", err)
 	}

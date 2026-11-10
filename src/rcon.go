@@ -20,6 +20,7 @@ const EMPTY_STRING_SIZE = 2
 const INT32_SIZE = 4
 const FIXED_ID = 1
 const DEFAULT_BUFFER_SIZE = 4110 // largest packet the server sends: 12 byte header, 4096 byte body, 2 null bytes
+const MIN_BUFFER_SIZE = INT32_SIZE + INT32_SIZE + EMPTY_STRING_SIZE
 
 func writeToServer(conn net.Conn, Type int32, command string) error {
 
@@ -43,27 +44,32 @@ func constructByteBuffer(ID int32, commandType int32, command string) []byte {
 
 	return buf.Bytes()
 }
-func readFromServer(conn *net.TCPConn) (ServerResponse, error) {
-	reply := make([]byte, DEFAULT_BUFFER_SIZE)
+func readFromServer(conn *net.Conn) (ServerResponse, error) {
 
-	_, err := conn.Read(reply)
+	var size int32
+	if err := binary.Read(*conn, binary.LittleEndian, &size); err != nil {
+		return ServerResponse{}, fmt.Errorf("-readFromServer: %w", err)
+	}
+	if size < MIN_BUFFER_SIZE || size > DEFAULT_BUFFER_SIZE {
+		return ServerResponse{}, fmt.Errorf("-readFromServer: invalid size %d", size)
+	}
+
+	reply := make([]byte, size)
+
+	_, err := io.ReadFull(*conn, reply) // keeps reading untill buffer is full, or fails if conn is lost.
 	if err != nil {
 		return ServerResponse{}, fmt.Errorf("-readFromServer: %w", err)
 	}
-	res, err := constructResponse(reply)
+	res, err := constructResponse(reply, size)
 	if err != nil {
 		return ServerResponse{}, fmt.Errorf("-readFromServer: %w", err)
 	}
 
 	return res, nil
 }
-func constructResponse(buf []byte) (ServerResponse, error) {
+func constructResponse(buf []byte, size int32) (ServerResponse, error) {
 	reader := bytes.NewReader(buf)
 
-	size, err := readInt32(reader)
-	if err != nil {
-		return ServerResponse{}, fmt.Errorf("-constructResponse: %w", err)
-	}
 	id, err := readInt32(reader)
 	if err != nil {
 		return ServerResponse{}, fmt.Errorf("-constructResponse: %w", err)
@@ -103,7 +109,7 @@ func readString(r io.Reader, length int32) (string, error) {
 
 	return string(data), nil
 }
-func rconLogin(conn *net.TCPConn, rconPassword string) (ServerResponse, error) {
+func rconLogin(conn *net.Conn, rconPassword string) (ServerResponse, error) {
 	commandType := int32(LOGIN)
 	res, err := interact(conn, commandType, rconPassword)
 	if err != nil {
@@ -115,8 +121,8 @@ func rconLogin(conn *net.TCPConn, rconPassword string) (ServerResponse, error) {
 
 	return res, err
 }
-func interact(conn *net.TCPConn, commandType int32, command string) (ServerResponse, error) {
-	err := writeToServer(conn, commandType, command)
+func interact(conn *net.Conn, commandType int32, command string) (ServerResponse, error) {
+	err := writeToServer(*conn, commandType, command)
 	if err != nil {
 		return ServerResponse{}, fmt.Errorf("-interact: %w", err)
 	}

@@ -36,7 +36,7 @@ func TestErrorsNameTheFailingFunctions(t *testing.T) {
 		{[]string{"stop", "survival"}, "-stopServer: -getServerInfo: "},
 		{[]string{"delete", "survival"}, "-serverDelete: -getServerInfo: "},
 		{[]string{"create", "-eula", "survival"}, "-serverCreate: -imageExists: "},
-		{[]string{"cmd", "-rconPass", "secret", "list", "survival"}, "-rconCommand: -getServerInfo: "},
+		{[]string{"cmd", "survival", "list"}, "-rconCommand: -getServerInfo: "},
 	}
 
 	for _, tt := range tests {
@@ -53,7 +53,7 @@ func TestErrorsNameTheFailingFunctions(t *testing.T) {
 }
 
 func TestErrorChainKeepsOriginalError(t *testing.T) {
-	_, err := constructResponse(nil)
+	_, err := constructResponse(nil, MIN_BUFFER_SIZE)
 
 	want := "-constructResponse: -readInt32: EOF"
 	if err == nil || err.Error() != want {
@@ -93,9 +93,8 @@ func TestCommandArgumentValidation(t *testing.T) {
 		{"delete flag after name", []string{"delete", "survival", "-delvolume"}, 1, "Usage: gst delete"},
 
 		{"cmd without arguments", []string{"cmd"}, 1, "Usage: gst cmd"},
-		{"cmd without server name", []string{"cmd", "-rconPass", "secret", "list"}, 1, "Usage: gst cmd"},
-		{"cmd flag after arguments", []string{"cmd", "list", "survival", "-rconPass", "secret"}, 1, "RCON password is required"},
-		{"cmd without password", []string{"cmd", "list", "survival"}, 1, "RCON password is required"},
+		{"cmd without command", []string{"cmd", "survival"}, 1, "Usage: gst cmd"},
+		{"create with removed rconPass flag", []string{"create", "-eula", "-rcon", "-rconPass", "secret", "survival"}, 2, "flag provided but not defined"},
 	}
 
 	for _, tt := range tests {

@@ -18,6 +18,7 @@ const CMD_MIN_ARGS = 2
 
 func main() {
 
+	log.SetFlags(0) // remove timestamp from log output
 	if len(os.Args) < COMMAND_MIN_ARGS {
 		printHelp()
 		os.Exit(1)
@@ -162,12 +163,12 @@ const helpText = `Usage: gst <command> [arguments]
 
 Commands:
   create -eula [options] <serverName>
-                       Create a new Minecraft server container with the given name
+                       Create and start a new Minecraft server with the given name
       -eula            Accept the Minecraft EULA (required)
       -port N          Host port to expose (default 25565)
       -memory SIZE     Server memory, 1G to 32G (default 4G)
       -rcon            Enable RCON so the server accepts gst cmd (password is generated)
-  start <serverName>   Start the game server container with the given name
+  start <serverName>   Start a stopped server again
   stop <serverName>    Stop the game server gracefully (waits up to 60 seconds)
   delete [options] <serverName>
                        Delete the server container, stopping it first if running
@@ -183,8 +184,8 @@ Examples:
   gst create -eula -port 25570 -memory 8G creative
   gst create -eula -rcon survival
   gst list
-  gst start survival
   gst stop survival
+  gst start survival
   gst delete -delvolume survival
   gst cmd survival say hello`
 

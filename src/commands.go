@@ -93,7 +93,10 @@ func stopServer(clir *client.Client, name string) error {
 func getServerInfo(clir *client.Client, name string) (ServerInfo, error) {
 	res, err := clir.ContainerInspect(context.Background(), name, client.ContainerInspectOptions{})
 	if err != nil {
-		return ServerInfo{}, fmt.Errorf("inspecting container: %w", err) //here dont want to terminate the program, returns false and the error
+		if cerrdefs.IsNotFound(err) {
+			return ServerInfo{}, fmt.Errorf("server %s was not found", name)
+		}
+		return ServerInfo{}, fmt.Errorf("inspecting container: %w", err)
 	}
 
 	ipAddr := ""
@@ -108,8 +111,8 @@ func getServerInfo(clir *client.Client, name string) (ServerInfo, error) {
 
 	rcon := false
 	rconPass := ""
-	if res.Container.Config == nil {
-		return ServerInfo{}, fmt.Errorf("container %s has no config", name)
+	if res.Container.Config == nil || res.Container.State == nil {
+		return ServerInfo{}, fmt.Errorf("container %s has bad config or state", name)
 	}
 
 	for _, env := range res.Container.Config.Env {
@@ -173,11 +176,18 @@ func serverCreate(clir *client.Client, name string, port int, memory string, rco
 		return fmt.Errorf("creating server %s: %w", name, err)
 	}
 
+	fmt.Printf("Server %s created with ID: %s\n", name, res.ID)
+	fmt.Printf("Starting server %s...\n", name)
+
 	err = startServer(clir, name)
 	if err != nil {
-		return fmt.Errorf("Server created, trying to start: %s: %w", name, err)
+		fmt.Printf("Failed to start server %s, cleaning up...\n", name)
+		e := serverDelete(clir, name, false) // trying to clean up the server if starting fails
+		if e != nil {
+			fmt.Printf("Failed to clean up server %s: %v\n", name, e)
+		}
+		return fmt.Errorf("server %s was created but failed to start (is port %d in use?)", name, port)
 	}
-	fmt.Printf("Server %s created with ID: %s ,started successfully\n", name, res.ID)
 
 	return nil
 }
@@ -231,7 +241,7 @@ func rconCommand(clir *client.Client, name string, command string) (ServerRespon
 	if err != nil {
 		return ServerResponse{}, fmt.Errorf("sending command to %s: %w", name, err)
 	}
-	// sanity checks to ensure the container is on the bridge network and has network settings
+
 	if !res.Managed {
 		return ServerResponse{}, fmt.Errorf("server %s is not managed by gst", name)
 	}
@@ -245,7 +255,7 @@ func rconCommand(clir *client.Client, name string, command string) (ServerRespon
 	}
 	rconPassword := res.RCONPass
 
-	conn, err := net.DialTimeout("tcp", res.IPAddr+":25575", TIMEOUT_FOR_CONNECTION*time.Second)
+	conn, err := net.DialTimeout("tcp", net.JoinHostPort(res.IPAddr, "25575"), TIMEOUT_FOR_CONNECTION*time.Second)
 	if err != nil {
 		return ServerResponse{}, fmt.Errorf("connecting to RCON on %s: %w", name, err)
 	} //finish setting up connetion

@@ -51,12 +51,11 @@ The examples below assume `gst` is on your `PATH`. Otherwise, run it as `./bin/g
 ### 3. Create and run a server
 
 ```sh
-gst create -eula survival     # create the server (accepting the Minecraft EULA is required)
-gst start survival            # start it
+gst create -eula survival     # create and start the server (accepting the Minecraft EULA is required)
 gst list                      # see your servers and their state
 ```
 
-Connect from Minecraft to `localhost:25565`. The first start takes a minute while the world is generated.
+`create` starts the server right away, so there's no need to run `gst start`. Connect from Minecraft to `localhost:25565`. The first start takes a minute while the world is generated.
 
 `create` options:
 
@@ -83,10 +82,11 @@ gst cmd creative time set day
 gst cmd creative list
 ```
 
-### 5. Stop and delete
+### 5. Stop, restart and delete
 
 ```sh
 gst stop survival                  # graceful stop, waits up to 60 seconds
+gst start survival                 # start a stopped server again
 gst delete survival                # remove the container, keep the world
 gst delete -delvolume survival     # remove the container and its world data
 ```

@@ -33,6 +33,7 @@ All commands run from the project root.
 - Wrap with a short, lowercase description of what failed, and use `%w`: `fmt.Errorf("inspecting container: %w", err)`. No trailing `\n` or period.
 - Top-level operations name the action and the server: `starting server %s: %w`. Inner steps describe their step: `reading packet size: %w`. Don't wrap where it only repeats the caller's context (for example `readInt32`, `interact`).
 - Wrong-state conditions are errors too: `server %s is not running`.
+- Follow those convetions, if you see an error in a different format, leave it be, as the developer changed it himself.
 
 ### CLI
 

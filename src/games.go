@@ -15,14 +15,14 @@ type ServerData struct {
 	Env          []string
 	Labels       map[string]string
 	Tty          bool
-	Stdin_open   bool
+	StdinOpen    bool
 	Mounts       []mount.Mount
 }
 
 func constructMinecraftServerData(name string, port int, memory string) (ServerData, error) {
 	tcpPort, err := network.ParsePort("25565/tcp")
 	if err != nil {
-		return ServerData{}, fmt.Errorf("-constructMinecraftServerData: %w", err)
+		return ServerData{}, fmt.Errorf("parsing Minecraft port: %w", err)
 	}
 
 	return ServerData{
@@ -34,10 +34,10 @@ func constructMinecraftServerData(name string, port int, memory string) (ServerD
 		PortBindings: network.PortMap{
 			tcpPort: []network.PortBinding{{HostPort: fmt.Sprintf("%d", port)}},
 		},
-		Env:        []string{"EULA=TRUE", "MEMORY=" + memory},
-		Labels:     map[string]string{"gst-managed": "true"},
-		Tty:        true,
-		Stdin_open: true,
+		Env:       []string{"EULA=TRUE", "MEMORY=" + memory},
+		Labels:    map[string]string{"gst-managed": "true"},
+		Tty:       true,
+		StdinOpen: true,
 		Mounts: []mount.Mount{
 			{
 				Type:   mount.TypeVolume,

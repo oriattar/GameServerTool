@@ -23,20 +23,20 @@ func runGst(t *testing.T, args ...string) (string, int) {
 	return string(out), 0
 }
 
-// Docker is pointed at a closed port, so each command fails and logs the chain of function names
-func TestErrorsNameTheFailingFunctions(t *testing.T) {
+// Docker is pointed at a closed port, so each command fails and logs a readable error chain
+func TestErrorsDescribeWhatFailed(t *testing.T) {
 	t.Setenv("DOCKER_HOST", "tcp://127.0.0.1:1")
 
 	tests := []struct {
 		args       []string
 		wantOutput string
 	}{
-		{[]string{"list"}, "-listServers: "},
-		{[]string{"start", "survival"}, "-startServer: -getServerInfo: "},
-		{[]string{"stop", "survival"}, "-stopServer: -getServerInfo: "},
-		{[]string{"delete", "survival"}, "-serverDelete: -getServerInfo: "},
-		{[]string{"create", "-eula", "survival"}, "-serverCreate: -imageExists: "},
-		{[]string{"cmd", "survival", "list"}, "-rconCommand: -getServerInfo: "},
+		{[]string{"list"}, "listing servers: "},
+		{[]string{"start", "survival"}, "starting server survival: inspecting container: "},
+		{[]string{"stop", "survival"}, "stopping server survival: inspecting container: "},
+		{[]string{"delete", "survival"}, "deleting server survival: inspecting container: "},
+		{[]string{"create", "-eula", "survival"}, "creating server survival: inspecting image gst-minecraft: "},
+		{[]string{"cmd", "survival", "list"}, "sending command to survival: inspecting container: "},
 	}
 
 	for _, tt := range tests {
@@ -55,7 +55,7 @@ func TestErrorsNameTheFailingFunctions(t *testing.T) {
 func TestErrorChainKeepsOriginalError(t *testing.T) {
 	_, err := constructResponse(nil, MIN_BUFFER_SIZE)
 
-	want := "-constructResponse: -readInt32: EOF"
+	want := "reading request ID: EOF"
 	if err == nil || err.Error() != want {
 		t.Errorf("error = %v, want %q", err, want)
 	}

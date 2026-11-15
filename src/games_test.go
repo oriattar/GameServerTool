@@ -14,7 +14,7 @@ import (
 )
 
 func TestConstructMinecraftServerData(t *testing.T) {
-	data, err := constructMinecraftServerData("survival", 25570, "8G")
+	data, err := constructMinecraftServerData("survival", 25570, "8G", false)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

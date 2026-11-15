@@ -5,20 +5,22 @@ import (
 	"crypto/rand"
 	"fmt"
 	"net"
+	"net/netip"
 	"strings"
 	"time"
 
 	cerrdefs "github.com/containerd/errdefs"
 	"github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/api/types/network"
 	"github.com/moby/moby/client"
 )
 
 type ServerInfo struct {
-	Managed  bool
-	Running  bool
-	IPAddr   string
-	RCON     bool
-	RCONPass string
+	Managed      bool
+	Running      bool
+	RCON         bool
+	RCONPass     string
+	RCONHostPort string
 }
 
 const LOGIN = 3
@@ -99,16 +101,6 @@ func getServerInfo(clir *client.Client, name string) (ServerInfo, error) {
 		return ServerInfo{}, fmt.Errorf("inspecting container: %w", err)
 	}
 
-	ipAddr := ""
-	settings := res.Container.NetworkSettings
-
-	if settings != nil {
-		endpoint, ok := settings.Networks["bridge"]
-		if ok && endpoint != nil {
-			ipAddr = endpoint.IPAddress.String()
-		}
-	}
-
 	rcon := false
 	rconPass := ""
 	if res.Container.Config == nil || res.Container.State == nil {
@@ -124,12 +116,22 @@ func getServerInfo(clir *client.Client, name string) (ServerInfo, error) {
 		}
 	}
 
+	rconHostPort := "" //finds the port docker assigned for RCON on the host machine
+	settings := res.Container.NetworkSettings
+	if settings != nil {
+		rconPort, _ := network.ParsePort("25575/tcp")
+		if bindings := settings.Ports[rconPort]; len(bindings) > 0 {
+			rconHostPort = bindings[0].HostPort
+		}
+
+	}
+
 	return ServerInfo{
-		Managed:  res.Container.Config.Labels["gst-managed"] == "true",
-		Running:  res.Container.State.Running,
-		IPAddr:   ipAddr,
-		RCON:     rcon,
-		RCONPass: rconPass,
+		Managed:      res.Container.Config.Labels["gst-managed"] == "true",
+		Running:      res.Container.State.Running,
+		RCON:         rcon,
+		RCONPass:     rconPass,
+		RCONHostPort: rconHostPort,
 	}, nil
 }
 func serverCreate(clir *client.Client, name string, port int, memory string, rcon bool) error {
@@ -149,6 +151,14 @@ func serverCreate(clir *client.Client, name string, port int, memory string, rco
 	}
 
 	if rcon {
+		rconPort, err := network.ParsePort("25575/tcp")
+		if err != nil {
+			return fmt.Errorf("parsing rcon port: %w", err)
+		}
+
+		serverData.ExposedPorts[rconPort] = struct{}{}
+		serverData.PortBindings[rconPort] = []network.PortBinding{{HostIP: netip.MustParseAddr("127.0.0.1")}}
+		//not mapping to fixed port, allows creating and running multiple servers with RCON enabled simultaneously.
 		rconPass := rand.Text()
 		serverData.Env = append(serverData.Env, "RCON=true", "RCON_PASSWORD="+rconPass)
 	}
@@ -253,10 +263,14 @@ func rconCommand(clir *client.Client, name string, command string) (ServerRespon
 	if !res.RCON {
 		return ServerResponse{}, fmt.Errorf("RCON is not enabled on server %s, create it with -rcon", name)
 	}
-	rconPassword := res.RCONPass
 
-	conn, err := net.DialTimeout("tcp", net.JoinHostPort(res.IPAddr, "25575"), TIMEOUT_FOR_CONNECTION*time.Second)
-	if err != nil {
+	if res.RCONHostPort == "" {
+		return ServerResponse{}, fmt.Errorf("server %s has no published RCON port, recreate it with -rcon", name)
+
+	}
+	rconPassword := res.RCONPass
+	conn, err := net.DialTimeout("tcp", net.JoinHostPort("127.0.0.1", res.RCONHostPort), TIMEOUT_FOR_CONNECTION*time.Second)
+	if err != nil { //connecting to RCON port on local host
 		return ServerResponse{}, fmt.Errorf("connecting to RCON on %s: %w", name, err)
 	} //finish setting up connetion
 

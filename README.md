@@ -21,7 +21,7 @@ Currently only **Minecraft (Java Edition)** is supported. The code is structured
 - **CLI:** `gst` uses the Docker Go SDK to create and control the containers. It only touches containers it created, which it marks with the label `gst-managed=true`.
 - **Storage:** each server gets a volume named `gst-<serverName>-data`, mounted at `/data`.
 - **Ports:** Minecraft listens on port 25565 inside the container. `-port` chooses the port on your machine.
-- **RCON (remote console):** with `-rcon`, `gst` generates a random password, enables RCON on port 25575, and can send console commands to the server with `gst cmd`. You never have to see or type the password.
+- **RCON (remote console):** with `-rcon`, `gst` generates a random password, enables RCON on port 25575, and can send console commands to the server with `gst cmd`. You never have to see or type the password. The RCON port is published only on `127.0.0.1`, on a free port Docker picks, so only your machine can reach it and several RCON servers can run at once.
 
 ## Usage
 
@@ -56,6 +56,8 @@ gst list                      # see your servers and their state
 ```
 
 `create` starts the server right away, so there's no need to run `gst start`. Connect from Minecraft to `localhost:25565`. The first start takes a minute while the world is generated.
+
+If the server can't start, for example because its port is already used by another server, `create` removes the container again and reports the error. Give each server its own `-port`.
 
 `create` options:
 
@@ -103,9 +105,10 @@ Run the tests from the project root:
 go test ./src
 ```
 
-The tests don't need Docker. They cover the CLI's argument checks, the Minecraft container settings, the error messages, and `entrypoint.sh` (run against a fake `java`).
+The tests don't need Docker. They cover the CLI's argument checks, the Minecraft container settings, the error messages, and `entrypoint.sh` (run against a fake `java`). Because they run `entrypoint.sh` with `sh`, they need Linux, macOS or WSL.
 
 ## Known limitations
 
 - Only Minecraft is supported so far.
-- `gst cmd` connects to the container's internal IP address. That works when Docker runs on Linux or directly inside WSL, but not with Docker Desktop on Windows or macOS.
+- `gst` has been tested with Docker Engine on Linux (inside WSL). Docker Desktop should work but hasn't been tested yet.
+- `gst` finds Docker through `DOCKER_HOST` or the default socket, and doesn't read Docker contexts. With Docker Desktop on Linux, set `DOCKER_HOST=unix://$HOME/.docker/desktop/docker.sock` first.

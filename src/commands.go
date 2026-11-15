@@ -5,7 +5,7 @@ import (
 	"crypto/rand"
 	"fmt"
 	"net"
-	"net/netip"
+
 	"strings"
 	"time"
 
@@ -33,7 +33,7 @@ func listServers(clir *client.Client) error {
 	res, err := clir.ContainerList(context.Background(), client.ContainerListOptions{
 		All:     true,
 		Filters: client.Filters{}.Add("label", "gst-managed=true"),
-	}) // getting list of containers, filtered to only tool created
+	})
 	if err != nil {
 		return fmt.Errorf("listing servers: %w", err)
 	}
@@ -108,18 +108,21 @@ func getServerInfo(clir *client.Client, name string) (ServerInfo, error) {
 	}
 
 	for _, env := range res.Container.Config.Env {
-		if strings.HasPrefix(env, "RCON_PASSWORD=") { // looking for the prefixes we are interested in within env.
-			rconPass = strings.TrimPrefix(env, "RCON_PASSWORD=") //trims the prefix to get the password.
+		if strings.HasPrefix(env, "RCON_PASSWORD=") {
+			rconPass = strings.TrimPrefix(env, "RCON_PASSWORD=")
 		}
 		if env == "RCON=true" {
 			rcon = true
 		}
 	}
 
-	rconHostPort := "" //finds the port docker assigned for RCON on the host machine
+	rconHostPort := ""
 	settings := res.Container.NetworkSettings
 	if settings != nil {
-		rconPort, _ := network.ParsePort("25575/tcp")
+		rconPort, err := network.ParsePort("25575/tcp")
+		if err != nil {
+			return ServerInfo{}, fmt.Errorf("parsing rcon port: %w", err)
+		}
 		if bindings := settings.Ports[rconPort]; len(bindings) > 0 {
 			rconHostPort = bindings[0].HostPort
 		}
@@ -135,7 +138,7 @@ func getServerInfo(clir *client.Client, name string) (ServerInfo, error) {
 	}, nil
 }
 func serverCreate(clir *client.Client, name string, port int, memory string, rcon bool) error {
-	//Future switch case which game, for now only minecraft
+
 	serverData, err := constructMinecraftServerData(name, port, memory)
 
 	if err != nil {
@@ -151,14 +154,6 @@ func serverCreate(clir *client.Client, name string, port int, memory string, rco
 	}
 
 	if rcon {
-		rconPort, err := network.ParsePort("25575/tcp")
-		if err != nil {
-			return fmt.Errorf("parsing rcon port: %w", err)
-		}
-
-		serverData.ExposedPorts[rconPort] = struct{}{}
-		serverData.PortBindings[rconPort] = []network.PortBinding{{HostIP: netip.MustParseAddr("127.0.0.1")}}
-		//not mapping to fixed port, allows creating and running multiple servers with RCON enabled simultaneously.
 		rconPass := rand.Text()
 		serverData.Env = append(serverData.Env, "RCON=true", "RCON_PASSWORD="+rconPass)
 	}

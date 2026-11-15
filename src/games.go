@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"net/netip"
 
 	"github.com/moby/moby/api/types/mount"
 	"github.com/moby/moby/api/types/network"
@@ -25,14 +26,21 @@ func constructMinecraftServerData(name string, port int, memory string) (ServerD
 		return ServerData{}, fmt.Errorf("parsing Minecraft port: %w", err)
 	}
 
+	rconPort, err := getMinecraftRconPort()
+	if err != nil {
+		return ServerData{}, fmt.Errorf("parsing rcon port: %w", err)
+	}
+
 	return ServerData{
 		Name:  name,
 		Image: "gst-minecraft",
 		ExposedPorts: network.PortSet{
-			tcpPort: struct{}{},
+			tcpPort:  struct{}{},
+			rconPort: struct{}{},
 		},
 		PortBindings: network.PortMap{
-			tcpPort: []network.PortBinding{{HostPort: fmt.Sprintf("%d", port)}},
+			tcpPort:  []network.PortBinding{{HostPort: fmt.Sprintf("%d", port)}},
+			rconPort: []network.PortBinding{{HostIP: netip.MustParseAddr("127.0.0.1")}},
 		},
 		Env:       []string{"EULA=TRUE", "MEMORY=" + memory},
 		Labels:    map[string]string{"gst-managed": "true"},
@@ -49,4 +57,12 @@ func constructMinecraftServerData(name string, port int, memory string) (ServerD
 			},
 		},
 	}, nil
+}
+
+func getMinecraftRconPort() (network.Port, error) {
+	rconPort, err := network.ParsePort("25575/tcp")
+	if err != nil {
+		return network.Port{}, fmt.Errorf("parsing rcon port: %w", err)
+	}
+	return rconPort, nil
 }

@@ -29,7 +29,7 @@ All commands run from the project root.
 
 ### Error handling
 
-- Errors are logged only in the `handle<Command>` functions in `main.go`, using `log.Fatal(err)`. Every other function returns the error.
+- Errors are logged only in the `handle<Command>` functions in `main.go`, using `log.Fatal(err)`. Every other function returns the error. The one exception is `main()` itself, which logs a failure to create the Docker client, since that happens before any handler runs.
 - Wrap with a short, lowercase description of what failed, and use `%w`: `fmt.Errorf("inspecting container: %w", err)`. No trailing `\n` or period.
 - Top-level operations name the action and the server: `starting server %s: %w`. Inner steps describe their step: `reading packet size: %w`. Don't wrap where it only repeats the caller's context (for example `readInt32`, `interact`).
 - Wrong-state conditions are errors too: `server %s is not running`.
@@ -52,11 +52,19 @@ All commands run from the project root.
 - Containers created by gst carry the label `gst-managed=true`. Commands refuse to touch containers without it.
 - Each server's world is in the volume `gst-<name>-data`, mounted at `/data`. It also carries `gst-managed=true`.
 - Minecraft always listens on 25565 inside the container. `-port` only changes the host side of the mapping.
-- With `-rcon`, `create` generates a password with `crypto/rand` and passes it as the env vars `RCON=true` and `RCON_PASSWORD`. `getServerInfo` reads it back from the container's config, so the user never types it. RCON listens on 25575, and `rconCommand` connects to the container's bridge network IP.
+- `serverCreate` creates the container and then starts it with `startServer`. If the start fails (for example the host port is taken), it deletes the container again (keeping the volume) and returns the error.
+- With `-rcon`, `create` generates a password with `crypto/rand` and passes it as the env vars `RCON=true` and `RCON_PASSWORD`. `getServerInfo` reads it back from the container's config, so the user never types it.
+- RCON listens on 25575 inside the container. `create` publishes it on `127.0.0.1` with an empty `HostPort`, so Docker picks a free host port and several RCON servers can coexist. `getServerInfo` reads that port from `NetworkSettings.Ports` into `RCONHostPort` (only filled while the container runs), and `rconCommand` connects to `127.0.0.1:<RCONHostPort>`. An empty `RCONHostPort` means the server was created before RCON was published and must be recreated.
+- `rconCommand` uses `TIMEOUT_FOR_CONNECTION` for the dial and `TIMEOUT_FOR_COMMAND` as a deadline on the whole login and command exchange.
 - The image copies `entrypoint.sh` in at build time. After changing it, rebuild the image and recreate the containers; the tests run the local file, so they can pass while the image is stale.
+
+## Environment
+
+- The owner runs Docker Engine directly inside WSL (Ubuntu), at `/var/run/docker.sock`. Docker Desktop should work but is untested.
+- The client is created with `client.FromEnv`, which reads `DOCKER_HOST` or uses the default socket. It does not read Docker contexts, so Docker Desktop on Linux needs `DOCKER_HOST` set.
 
 ## Tests
 
 - `commands_test.go` builds the real binary once (`TestMain` in `main_test.go`) and runs it with bad arguments, and with `DOCKER_HOST` pointed at a closed port to check error messages.
-- `games_test.go` runs `entrypoint.sh` with a fake `java` on `PATH`.
+- `games_test.go` runs `entrypoint.sh` with a fake `java` on `PATH`, so the tests need `sh` (Linux, macOS or WSL).
 - Commands that need a real Docker daemon (successful create, start, stop, delete, cmd) are not covered.

@@ -20,7 +20,7 @@ type ServerData struct {
 	Mounts       []mount.Mount
 }
 
-func constructMinecraftServerData(name string, port int, memory string) (ServerData, error) {
+func constructMinecraftServerData(name string, port int, memory string, rcon bool) (ServerData, error) {
 	tcpPort, err := network.ParsePort("25565/tcp")
 	if err != nil {
 		return ServerData{}, fmt.Errorf("parsing Minecraft port: %w", err)
@@ -31,21 +31,24 @@ func constructMinecraftServerData(name string, port int, memory string) (ServerD
 		return ServerData{}, fmt.Errorf("parsing rcon port: %w", err)
 	}
 
+	exposedPorts := network.PortSet{tcpPort: struct{}{}}
+	publishedPorts := network.PortMap{
+		tcpPort: []network.PortBinding{{HostPort: fmt.Sprintf("%d", port)}},
+	}
+	if rcon {
+		exposedPorts[rconPort] = struct{}{}
+		publishedPorts[rconPort] = []network.PortBinding{{HostIP: netip.MustParseAddr("127.0.0.1")}}
+	}
+
 	return ServerData{
-		Name:  name,
-		Image: "gst-minecraft",
-		ExposedPorts: network.PortSet{
-			tcpPort:  struct{}{},
-			rconPort: struct{}{},
-		},
-		PortBindings: network.PortMap{
-			tcpPort:  []network.PortBinding{{HostPort: fmt.Sprintf("%d", port)}},
-			rconPort: []network.PortBinding{{HostIP: netip.MustParseAddr("127.0.0.1")}},
-		},
-		Env:       []string{"EULA=TRUE", "MEMORY=" + memory},
-		Labels:    map[string]string{"gst-managed": "true"},
-		Tty:       true,
-		StdinOpen: true,
+		Name:         name,
+		Image:        "gst-minecraft",
+		ExposedPorts: exposedPorts,
+		PortBindings: publishedPorts,
+		Env:          []string{"EULA=TRUE", "MEMORY=" + memory},
+		Labels:       map[string]string{"gst-managed": "true"},
+		Tty:          true,
+		StdinOpen:    true,
 		Mounts: []mount.Mount{
 			{
 				Type:   mount.TypeVolume,
@@ -62,7 +65,7 @@ func constructMinecraftServerData(name string, port int, memory string) (ServerD
 func getMinecraftRconPort() (network.Port, error) {
 	rconPort, err := network.ParsePort("25575/tcp")
 	if err != nil {
-		return network.Port{}, fmt.Errorf("parsing rcon port: %w", err)
+		return network.Port{}, fmt.Errorf("failed to parse rcon port: %w", err)
 	}
 	return rconPort, nil
 }

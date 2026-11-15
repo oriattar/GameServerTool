@@ -5,13 +5,11 @@ import (
 	"crypto/rand"
 	"fmt"
 	"net"
-
 	"strings"
 	"time"
 
 	cerrdefs "github.com/containerd/errdefs"
 	"github.com/moby/moby/api/types/container"
-	"github.com/moby/moby/api/types/network"
 	"github.com/moby/moby/client"
 )
 
@@ -119,7 +117,7 @@ func getServerInfo(clir *client.Client, name string) (ServerInfo, error) {
 	rconHostPort := ""
 	settings := res.Container.NetworkSettings
 	if settings != nil {
-		rconPort, err := network.ParsePort("25575/tcp")
+		rconPort, err := getMinecraftRconPort()
 		if err != nil {
 			return ServerInfo{}, fmt.Errorf("parsing rcon port: %w", err)
 		}
@@ -139,7 +137,7 @@ func getServerInfo(clir *client.Client, name string) (ServerInfo, error) {
 }
 func serverCreate(clir *client.Client, name string, port int, memory string, rcon bool) error {
 
-	serverData, err := constructMinecraftServerData(name, port, memory)
+	serverData, err := constructMinecraftServerData(name, port, memory, rcon)
 
 	if err != nil {
 		return fmt.Errorf("creating server %s: %w", name, err)
